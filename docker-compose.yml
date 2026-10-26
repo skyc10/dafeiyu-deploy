@@ -1,0 +1,138 @@
+# 大肥鱼 QQ 机器人 · Docker Compose
+#
+# 设计依据：D:\大肥鱼QQ\部署交接计划-v2.md 阶段 5、7
+# 事实依据：D:\大肥鱼QQ\_audit\snowluma-audit.md（v2.2.0 官方要求，2026-10-25 核查）
+#
+# 安全边界：
+#   - SYS_PTRACE / seccomp=unconfined 只给 snowluma，不给 fish-bot
+#   - OneBot 3000/3001 只在容器私网内通信，不发布到宿主
+#   - noVNC / WebUI 只绑 127.0.0.1
+
+name: dafeiyu
+
+services:
+  # ── QQ 接入端 ────────────────────────────────────────────────────────────
+  snowluma:
+    image: motricseven7/snowluma:v2.2.0    # 固定 tag，不用浮动 latest
+    container_name: snowluma
+    restart: unless-stopped
+    shm_size: 1g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 1048576
+    # 以下两项不可省：native addon 经 ptrace 注入 QQ 进程，默认 seccomp 会拦
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      TZ: Asia/Shanghai
+      SNOWLUMA_WEBUI_HOST: 0.0.0.0
+      SNOWLUMA_WEBUI_PORT: "5099"
+      SNOWLUMA_ONEBOT_HOST: 0.0.0.0
+      SNOWLUMA_HOOK_AUTOLOAD: "1"
+      # 不要清空：关掉 GPU/SwiftShader，防止未登录时内存单调上涨（8 GB 机器尤其重要）
+      SNOWLUMA_QQ_FLAGS: "--disable-gpu --disable-software-rasterizer --disable-gpu-compositing"
+      # 【已获用户明确授权 2026-10-25】由用户本人决定设置，等于确认已阅读并同意
+      # SnowLuma EULA v1.1 与隐私政策。依据 v2.2.0 release notes（Docker 文档未列）。
+      # 作用：避免首启卡在 WebUI 协议同意页。若日后撤回授权，注释掉即可，改为页面手点。
+      SNOWLUMA_ACCEPT_EULA: "1"
+      SNOWLUMA_ACCEPT_PRIVACY: "1"
+      # 8 GB 可用内存偏紧，降低屏幕分辨率省内存（官方默认 1920x1080x24）
+      SNOWLUMA_SCREEN: "1280x720x24"
+    ports:
+      # 宿主机静态端口区间 16081/16082（动态区间是 1024-15000，但已实测空闲）
+      - "127.0.0.1:16081:6081"   # noVNC 扫码
+      - "127.0.0.1:16082:5099"   # SnowLuma WebUI
+      # OneBot 3000/3001 不发布：只在 dafeiyu-net 内给 fish-bot 用
+    volumes:
+      - qq-gateway-data:/app/data          # 含 config/onebot.json、runtime.json
+      - qq-client-config:/app/.config      # QQ 客户端配置
+      - qq-client-data:/app/.local/share   # QQ 登录态、缓存
+    networks:
+      - dafeiyu-net
+    mem_limit: 3g
+    memswap_limit: 3g
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ── 专用 DSH + qq-bridge ──────────────────────────────────────────────────
+  fish-bot:
+    build:
+      # 上下文用项目根，以便 Dockerfile 能 COPY config/ 下的模板
+      context: .
+      dockerfile: fish-bot/Dockerfile
+      args:
+        DSH_VERSION: "0.2.1-rc.2"
+    image: dafeiyu/fish-bot:local
+    container_name: fish-bot
+    restart: unless-stopped
+    depends_on:
+      - snowluma
+    environment:
+      TZ: Asia/Shanghai
+      # 专用数据根，严禁指向宿主 ~/.dsh、~/.agents
+      DSH_HOME: /data/dsh-home
+      DSH_AGENTS_HOME: /data/agents-home
+      # 桥接连接 SnowLuma（走容器私网，服务名解析）
+      SNOWLUMA_ONEBOT_HTTP: "http://snowluma:3000/"
+      SNOWLUMA_ONEBOT_WS: "ws://snowluma:3001/"
+    volumes:
+      - fish-bot-dsh:/data
+      # 【2026-10-25 修复】只读挂载 SnowLuma 的 OneBot 配置目录，让桥接能分别发现
+      # HTTP(3000) 与 WS(3001) 两个**不同**的 accessToken。
+      # 为什么必须挂：桥接的 snowluma.accessToken 只能存一个值（存的是 HTTP 那个），
+      # 而 WS 用另一个 token。填错任一个 → HTTP 401 或 WS code=1006（两者都实测踩过）。
+      # 只挂 config/ 子目录：同卷还有 vnc-password、webui.json 等敏感文件，不要整卷暴露。
+      # 注意 target 必须保留 config 这一层：桥接 readOneBotTokens() 读的是
+      # path.join(homeDir, 'config')（snowluma-conn.js:46），少一层就读不到。
+      - type: volume
+        source: qq-gateway-data
+        target: /snowluma-home/config
+        read_only: true
+        volume:
+          subpath: config
+    ports:
+      # 专用 DSH 管理页，仅本机可达。
+      # 用途：在浏览器里配置模型凭据（key 由 DSH 自己写入 .credentials.yaml，
+      # 不经过任何中间环节，也不进聊天记录/日志）。
+      # 容器内 DSH 绑 127.0.0.1:3080，故宿主侧只能经 compose 代理访问。
+      - "127.0.0.1:18080:3080"
+      # qq-bridge 内置控制台（白名单、模式、用量、表情库）。
+      # 容器内真实控制台绑 127.0.0.1:3100；console-proxy.mjs 转发到 13100 供映射。
+      # 宿主端口必须与容器内**控制台**端口一致（都用 3100）：
+      # 桥接的 Host 校验只接受 `127.0.0.1:<boundPort>`（bridge.js:3257），
+      # 宿主端口不同会拼出 127.0.0.1:13100 而被 403 拒绝。
+      # 3100 不在动态端口区间（1024-15000）——已验证空闲。
+      - "127.0.0.1:13100:13100"
+    networks:
+      - dafeiyu-net
+    # 注意：不给 SYS_PTRACE、不给 seccomp=unconfined
+    mem_limit: 2g
+    memswap_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+networks:
+  dafeiyu-net:
+    driver: bridge
+    # 私有 bridge，OneBot 流量不出宿主
+
+volumes:
+  # 全部是 Docker 命名卷，实际文件随数据盘落在 D:\deepseek_flash\data
+  # 显式指定 name，避免 compose 加项目前缀（否则与既有卷对不上，会当成新卷从零开始）
+  qq-gateway-data:
+    name: qq-gateway-data
+  qq-client-config:
+    name: qq-client-config
+  qq-client-data:
+    name: qq-client-data
+  fish-bot-dsh:
+    name: fish-bot-dsh

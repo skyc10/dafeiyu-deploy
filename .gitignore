@@ -1,0 +1,36 @@
+# 运行期配置与凭据（绝不入库）
+.env
+config.json
+fish-bot/config.json
+/config.json
+*.token
+*.key
+credentials*
+secrets*
+
+# 备份、状态与数据
+state/
+backup/
+volumes/
+*.log
+
+# 本地补丁/编辑残留
+*.bak
+*.bak-*
+*.orig
+*.rej
+*.tmp
+
+# 构建产物
+fish-bot/node_modules/
+__pycache__/
+*.py[cod]
+
+# 编辑器与系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# 管理面板是独立仓库，不并入
+management-panel/

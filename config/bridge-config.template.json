@@ -1,0 +1,73 @@
+{
+  "_comment": "大肥鱼 QQ 机器人 · 桥接配置模板。机器人名：大肥鱼；主人称呼：陈cc。安全：allowAllWhenEmpty=false，白名单显式列出。",
+  "_placeholder_note": "ownerQQ 与 allow 里的号码是占位值（1000000001/1000000002），首次部署后需在桥接控制台或运行期 config.json 里改成真实 QQ 号；模板本身不保存真实账号。",
+
+  "dsh": {
+    "baseUrl": "http://127.0.0.1:3080",
+    "provider": "hqoc",
+    "model": "deepseek-v4.1-flash",
+    "reasoningEffort": "low",
+    "authToken": "",
+    "authHeader": "authorization",
+    "authPrefix": "Bearer",
+    "allowRemote": true,
+    "_allowRemote_note": "已获用户授权 (2026-10-25)。DSH 绑容器 IP 以便宿主端口映射访问其管理页，桥接需把 launch token 发往该非回环地址。目标在 Docker 私网 dafeiyu-net 内，宿主仅映射 127.0.0.1:18080。"
+  },
+
+  "snowluma": {
+    "wsUrl": "ws://snowluma:3001",
+    "httpUrl": "http://snowluma:3000",
+    "accessToken": "",
+    "followDiscoveredEndpoint": false,
+    "silenceWarnMs": 600000,
+    "launcherPath": "",
+    "homeDir": ""
+  },
+
+  "ownerQQ": 1000000001,
+
+  "role": {
+    "maxInjectChars": 6000
+  },
+
+  "sessionCwd": "/data/workspace",
+  "agentPreset": "qq-chat",
+
+  "allow": {
+    "private": ["1000000001"],
+    "groups": ["1000000002"]
+  },
+  "deny": {
+    "private": [],
+    "groups": []
+  },
+
+  "allowAllWhenEmpty": false,
+
+  "ackMessage": "",
+  "sendDelayMs": 300,
+  "questionTimeoutMs": 300000,
+
+  "consolePort": 3100,
+  "consoleToken": "",
+
+  "socialV2": {
+    "enabled": true,
+    "agentPreset": "qq-chat-v2",
+    "tools": {
+      "memory": true,
+      "sendMessage": true,
+      "waitMessages": true,
+      "getPrompt": true,
+      "getUnread": true,
+      "getRecent": true
+    },
+    "wake": {
+      "defaultMode": "diving"
+    }
+  },
+
+  "security": {
+    "interceptNotify": true
+  }
+}
