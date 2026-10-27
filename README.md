@@ -4,6 +4,32 @@
 
 > 这里只放**代码与模板**。运行期配置、登录态、聊天与记忆数据都在 Docker 命名卷里，不入库。
 
+## 自带控制面板
+
+本项目配套提供 **大肥鱼控制面板**，日常使用可直接从面板查看 Docker、DSH、桥接与 QQ 在线状态，启动机器人、停止 AI 服务、关闭整套机器人，并打开扫码页、各服务控制台和插件管理页。
+
+**[下载控制面板](https://github.com/skyc10/dafeiyu-control-panel/releases/latest)** · [面板源码与完整说明](https://github.com/skyc10/dafeiyu-control-panel)
+
+1. 先按 [公开构建包说明](docs/PUBLIC-RELEASE.md) 部署机器人，创建所需 Docker 容器。
+2. 下载控制面板 ZIP 并解压；Windows 需安装 Python 3.10+（建议 3.12）和 Docker Desktop。
+3. 双击 `start.bat`，浏览器会自动打开本机面板（`http://127.0.0.1:18100/`）；使用自动打开的页面或终端打印的引导链接完成访问。
+4. 在“控制台”与“插件”区域打开相应管理页面，例如“陪伴记忆管理”。
+
+面板作为配套组件单独下载，未打进 Docker 部署 ZIP；无需安装 Python 第三方依赖。它管理已有容器，首次镜像构建与容器创建按部署说明完成。关闭面板窗口只会退出面板，机器人容器继续运行。
+
+## 自带插件
+
+以下插件已纳入当前部署镜像的构建材料。**随镜像提供不等于所有功能默认启用**；请按对应插件说明配置，避免同时启用重叠的记忆采集或注入功能。
+
+| 插件 | 用途 | 版本 / 状态 | 管理入口与说明 |
+| --- | --- | --- | --- |
+| [QQ 陪伴记忆与学习](https://github.com/skyc10/dsh-qq-companion-memory) | 角色与会话范围记忆、显式共享、证据学习、候选试用、人格版本及备份管理 | `0.1.3`；新实例功能默认关闭，按需启用 | 配套控制面板 → 插件 → 陪伴记忆管理；或专用 DSH 侧栏“记忆管理”。[下载](https://github.com/skyc10/dsh-qq-companion-memory/releases/latest) · [接入说明](docs/COMPANION-INSTALL.md) |
+| [心情插件 dsh-feiyu-mood](https://github.com/Yuuyuko-uu/dsh-feiyu-mood) | 提供角色心情能力 | 固定源码提交构建；需在 DSH 中绑定所需会话 | 专用 DSH 插件设置；配置方法见上游说明 |
+| [会话请求头 dsh-session-header](https://github.com/QuanhuZeYu/dsh-session-header) | 为模型请求添加 `x-session-id`，便于按会话识别请求 | `0.1.0`；部署启动时安装 | [部署与配置说明](docs/SESSION-HEADER-2026-10-27.md) |
+| [旧记忆插件 dsh-fish-memory](https://github.com/Yuuyuko-uu/dsh-fish-memory) | 保留旧版记忆组件及兼容路径 | 固定源码提交构建；使用陪伴记忆前应停用其重叠能力 | 旧部署兼容用途，新用户优先使用 QQ 陪伴记忆插件；见 [接入说明](docs/COMPANION-INSTALL.md) |
+
+后续增加自带插件时，继续在此表补充**名称、用途、版本或固定提交、默认启用状态、管理入口和说明/下载链接**。需要在控制面板中显示独立管理入口的插件，还应同步登记面板的 [`plugins.json`](https://github.com/skyc10/dafeiyu-control-panel/blob/main/plugins.json)，登记方式见 [插件接入说明](https://github.com/skyc10/dafeiyu-control-panel/blob/main/docs/plugins.md)。
+
 ## 结构
 
 ```
@@ -92,10 +118,6 @@ Get-Content "$env:APPDATA\Docker\settings-store.json" | Select-String "DataFolde
 ```
 
 被重置到 C 盘是已知历史问题（docker/for-win#14446、#13345）。
-
-## 配套项目
-
-管理面板（本机网页面板）在另一个仓库：`dafeiyu-control-panel`。
 
 ## 下载与问题反馈
 
