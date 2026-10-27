@@ -91,7 +91,7 @@ COPY fish-bot/companion-source.json /opt/companion-source.json
 RUN node -e "const fs=require('fs'),c=require('crypto'),m=require('/opt/companion-source.json');if(c.createHash('sha256').update(fs.readFileSync('/tmp/companion.tgz')).digest('hex')!==m.sha256)throw Error('companion package hash mismatch')" \
     && mkdir -p /opt/plugins/dsh-qq-companion-memory \
     && tar -xzf /tmp/companion.tgz -C /opt/plugins/dsh-qq-companion-memory --strip-components=1 \
-    && test "$(node -p "require('/opt/plugins/dsh-qq-companion-memory/package.json').version")" = "0.1.2" \
+    && node -e "if(require('/opt/plugins/dsh-qq-companion-memory/package.json').version!==require('/opt/companion-source.json').version)throw Error('companion version mismatch')" \
     && cp -r /opt/plugins/dsh-qq-companion-memory/integration /opt/qq-bridge/ \
     && node /opt/plugins/dsh-qq-companion-memory/scripts/patch-bridge.mjs --root /opt/qq-bridge --apply \
     && rm /tmp/companion.tgz
