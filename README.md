@@ -63,7 +63,7 @@ Node 基础镜像固定 digest，DSH、qq-bridge、记忆与心情插件固定�
 ```powershell
 node --test tests/runtime.test.mjs
 docker compose config --quiet
-docker compose build fish-bot
+powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
 `tests/integration_runtime.py --live-restarts` 会真实启停容器，仅在用户授权的维护窗口执行。`tests/owner_e2e.mjs --send-owner-test` 只能在容器内显式执行，会向配置里的主人私聊发送模型测试消息；不用于日常健康检查。
@@ -96,3 +96,11 @@ Get-Content "$env:APPDATA\Docker\settings-store.json" | Select-String "DataFolde
 ## 配套项目
 
 管理面板（本机网页面板）在另一个仓库：`dafeiyu-control-panel`。
+
+## 下载与问题反馈
+
+- [下载发布包](https://github.com/skyc10/dafeiyu-deploy/releases)（查看对应版本的要求与已知限制）。
+- [提交 Bug](https://github.com/skyc10/dafeiyu-deploy/issues/new/choose)：附版本、环境和复现步骤，日志与截图先脱敏。
+- [协作说明](CONTRIBUTING.md)。
+
+公开下载包与首次配置详见 [公开构建包说明](docs/PUBLIC-RELEASE.md)。Git 克隆后需先准备插件构建归档，不能直接跳过该步骤。
