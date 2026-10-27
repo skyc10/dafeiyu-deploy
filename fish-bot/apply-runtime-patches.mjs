@@ -2,12 +2,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const root = process.argv[2] || '/opt/qq-bridge';
+const pending = [];
 function change(file, edit) {
   const p = path.join(root, 'src', file);
-  let text = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
-  if (text.includes('// DAFEIYU_RUNTIME_V2')) return;
-  text = edit(text);
-  fs.writeFileSync(p, '// DAFEIYU_RUNTIME_V2\n' + text);
+  const current = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+  const backup = `${p}.runtime-source`;
+  const marked = current.includes('// DAFEIYU_RUNTIME_V2');
+  if (marked && !fs.existsSync(backup)) throw new Error(`${file}: runtime source backup missing; rebuild from fixed upstream`);
+  const source = marked ? fs.readFileSync(backup, 'utf8').replace(/\r\n/g, '\n') : current;
+  if (source.includes('// DAFEIYU_RUNTIME_V2')) throw new Error(`${file}: invalid runtime source backup`);
+  const expected = '// DAFEIYU_RUNTIME_V2\n' + edit(source);
+  if (marked && current !== expected) throw new Error(`${file}: runtime marker/content mismatch`);
+  if (!marked && fs.existsSync(backup) && fs.readFileSync(backup, 'utf8').replace(/\r\n/g, '\n') !== source) throw new Error(`${file}: runtime source backup mismatch`);
+  if (!marked) pending.push([backup, source], [p, expected]);
 }
 function replaceOne(text, from, to) {
   if (text.split(from).length !== 2) throw new Error('Patch anchor changed: ' + from.slice(0, 70));
@@ -54,8 +61,26 @@ for (const [file, expected] of [['bridge.js', 12], ['mcp-snowluma-safe.js', 1], 
     return text;
   });
 }
-fs.writeFileSync(path.join(root, 'src/deployment-config.js'), `import path from 'node:path';
+const deploymentConfig = `import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 export const bridgeConfigPath = process.env.QQ_BRIDGE_CONFIG_FILE || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../config.json');
-`);
+`;
+const configPath = path.join(root, 'src/deployment-config.js');
+if (fs.existsSync(configPath) && fs.readFileSync(configPath, 'utf8') !== deploymentConfig) throw new Error('deployment-config.js content mismatch');
+if (!fs.existsSync(configPath)) pending.push([configPath, deploymentConfig]);
+// All anchors and existing outputs are checked before the first filesystem write.
+const saved = pending.map(([file]) => [file, fs.existsSync(file) ? fs.readFileSync(file) : null]);
+try {
+  for (const [file, content] of pending) {
+    fs.writeFileSync(`${file}.runtime-tmp`, content, 'utf8');
+    fs.renameSync(`${file}.runtime-tmp`, file);
+  }
+} catch (error) {
+  for (const [file, content] of saved.reverse()) {
+    if (content === null) fs.rmSync(file, { force: true });
+    else fs.writeFileSync(file, content);
+    fs.rmSync(`${file}.runtime-tmp`, { force: true });
+  }
+  throw error;
+}
 console.log('[patch] single persistent config + operator connection diagnostics applied');

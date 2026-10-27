@@ -34,3 +34,6 @@ desktop.ini
 
 # 管理面板是独立仓库，不并入
 management-panel/
+
+# Explicitly staged plugin package (fingerprint is tracked separately)
+.companion-build/

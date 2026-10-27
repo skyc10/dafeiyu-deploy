@@ -158,7 +158,7 @@ export async function main() {
     log('DSH authenticated via stable service name; starting bridge');
     start('console proxy', process.execPath, ['/opt/console-proxy.mjs']);
     start('qqbridge', process.execPath, ['/opt/qq-bridge/src/bridge.js']);
-    // Preserve the existing one-shot memory migration, without changing its policy.
+    // Companion image installs a mood-only migration; never merge old memory sessions.
     let attempts = 0;
     const migration = setInterval(() => {
       if (stopping || ++attempts > 120) { clearInterval(migration); return; }
