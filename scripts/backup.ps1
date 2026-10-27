@@ -1,60 +1,30 @@
-# 大肥鱼 QQ 机器人 · 备份
-# 用法：.\scripts\backup.ps1
-#
-# 备份对象：四个 Docker 命名卷 + 桥接配置
-# 依据：_audit/snowluma-audit.md（三卷不可删，升级会丢登录态）
+# Consistent offline backup. No credentials or volume contents belong in Git.
+param([string]$Destination = (Join-Path 'D:\deepseek_flash\backup\volumes' (Get-Date -Format 'yyyyMMdd-HHmmss')))
 $ErrorActionPreference = 'Stop'
-
-$Bin = 'D:\deepseek_flash\DockerDesktop\resources\bin'
-$env:Path = "$Bin;$env:Path"
-$Docker = "$Bin\docker.exe"
-$ProjectDir = Split-Path -Parent $PSScriptRoot
-$BackupRoot = 'D:\deepseek_flash\backup\volumes'
-
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$dest = Join-Path $BackupRoot $stamp
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-
-Write-Host "==> 备份到 $dest" -ForegroundColor Cyan
-
-$volumes = @(
-    @{ Name = 'qq-gateway-data';  Path = '/app/data' },
-    @{ Name = 'qq-client-config'; Path = '/app/.config' },
-    @{ Name = 'qq-client-data';   Path = '/app/.local/share' },
-    @{ Name = 'fish-bot-dsh';     Path = '/data' }
-)
-
-foreach ($v in $volumes) {
-    $out = Join-Path $dest "$($v.Name).tar.gz"
-    Write-Host "  $($v.Name) ..." -NoNewline
-    # 用 alpine 挂载卷打包；路径取自卷的容器内挂载点
-    $mountPath = $v.Path
-    & $Docker run --rm `
-        -v "$($v.Name):$mountPath" `
-        -v "${dest}:/backup" `
-        alpine:3.21 sh -c "cd $mountPath && tar czf /backup/$($v.Name).tar.gz ." 2>$null
-    if ($LASTEXITCODE -eq 0 -and (Test-Path $out)) {
-        Write-Host " OK ($([math]::Round((Get-Item $out).Length/1MB,1)) MB)" -ForegroundColor Green
-    } else {
-        Write-Host ' 失败或卷不存在' -ForegroundColor Yellow
-    }
+$Docker = 'D:\deepseek_flash\DockerDesktop\resources\bin\docker.exe'
+$volumes = @('qq-gateway-data', 'qq-client-config', 'qq-client-data', 'fish-bot-dsh')
+foreach ($volume in $volumes) {
+    $users = & $Docker ps --filter "volume=$volume" --format '{{.Names}}'
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect volume users' }
+    if ($users) { throw "Stop volume writers before backup: $volume ($users)" }
+    & $Docker volume inspect $volume --format '{{.Name}}' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Missing volume: $volume" }
 }
-
-# 桥接配置
-$cfg = Join-Path $ProjectDir 'fish-bot\config.json'
-if (Test-Path $cfg) {
-    Copy-Item $cfg (Join-Path $dest 'bridge-config.json')
-    Write-Host '  bridge-config.json  OK' -ForegroundColor Green
+New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+$images = foreach ($name in @('fish-bot','snowluma')) {
+    $raw = & $Docker inspect $name --format '{{json .}}'
+    if ($LASTEXITCODE -ne 0) { throw "Cannot inspect $name" }
+    $info = $raw | ConvertFrom-Json
+    @{ container=$name; imageId=$info.Image; configuredImage=$info.Config.Image; state=$info.State.Status }
 }
-
-# 记录版本信息
-$info = @{
-    timestamp = (Get-Date).ToString('o')
-    snowluma  = (& $Docker inspect snowluma --format '{{.Config.Image}}' 2>$null)
-    volumes   = $volumes.Name
-} | ConvertTo-Json
-$info | Set-Content (Join-Path $dest 'manifest.json') -Encoding UTF8
-
-Write-Host ''
-Write-Host "完成：$dest" -ForegroundColor Cyan
-Write-Host '恢复：docker run --rm -v <卷名>:<路径> -v <备份目录>:/backup alpine sh -c "cd <路径> && tar xzf /backup/<卷名>.tar.gz"' -ForegroundColor DarkGray
+$files = foreach ($volume in $volumes) {
+    & $Docker run --rm --network none --mount "type=volume,source=$volume,target=/source,readonly" --mount "type=bind,source=$Destination,target=/backup" alpine:3.21 sh -c "cd /source && tar czf /backup/$volume.tar.gz ."
+    if ($LASTEXITCODE -ne 0) { throw "Backup failed: $volume" }
+    $file = Join-Path $Destination "$volume.tar.gz"
+    if (!(Test-Path -LiteralPath $file) -or (Get-Item -LiteralPath $file).Length -eq 0) { throw "Empty backup: $volume" }
+    & $Docker run --rm --network none --mount "type=bind,source=$Destination,target=/backup,readonly" alpine:3.21 sh -c "tar tzf /backup/$volume.tar.gz >/dev/null"
+    if ($LASTEXITCODE -ne 0) { throw "Backup archive validation failed: $volume" }
+    @{ volume=$volume; file="$volume.tar.gz"; sha256=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash; bytes=(Get-Item -LiteralPath $file).Length }
+}
+@{ timestamp=(Get-Date).ToString('o'); images=@($images); files=@($files); consistentOffline=$true } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $Destination 'manifest.json') -Encoding utf8
+Write-Host "Verified offline backup: $Destination"

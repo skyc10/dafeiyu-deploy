@@ -10,7 +10,7 @@
 ├─ docker-compose.yml              双容器编排
 ├─ fish-bot/
 │  ├─ Dockerfile                   专用 DSH + qq-bridge 镜像
-│  ├─ entrypoint.sh                容器入口（含隔离断言、持久化挂接）
+│  ├─ entrypoint.sh / runtime.mjs  容器入口与进程监督、鉴权就绪检查
 │  ├─ console-proxy.mjs            桥接控制台端口转发
 │  ├─ bootstrap-profile.mjs        专用 DSH profile 初始化
 │  ├─ migrate-memory.mjs           会话记忆迁移
@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | noVNC 扫码 | 16081 | 容器内 6081 |
 | SnowLuma WebUI | 16082 | 容器内 5099 |
-| 桥接控制台 | 13100 | 容器内 3100 |
+| 桥接控制台 | 13100 | 代理到容器内 3100 |
 | 专用 DSH | 18080 | 容器内 3080 |
 | OneBot HTTP/WS | 不发布 | 只在 `dafeiyu-net` 私网 |
 
@@ -44,15 +44,31 @@
 
 > 注意：登录态实际落在 `qq-client-config`，`qq-client-data` 基本为空。
 
-## 配置持久化要点
+## 配置持久化与连接
 
-**`/opt/qq-bridge/config.json` 不能用单文件软链指向卷内文件。**
+运行期唯一配置为 `/data/bridge-config.json`。构建补丁将桥接所有配置写入和 MCP 读取指向该文件；保存仍使用同目录临时文件加原子 rename，不再复制两个副本，也不依赖定时同步。
 
-桥接保存配置走「写临时文件 + rename 覆盖」。rename 替换的是**软链本身**，会把它变成普通文件，此后写入全部落进镜像可写层，卷里的持久副本不再更新——表现为「控制台改过白名单，重启后回到旧值」。
+`/opt/qq-bridge/config.json` 仅作旧只读工具的兼容链接。首次升级前将旧运行配置保存为 `/data/bridge-config.pre-upgrade-live.json`，运行管理器先备份旧运行与持久配置，再保留运行配置里的用户设置、刷新本轮连接令牌。迁移由 `/data/architecture-v2-migrated.json` 标记，仅执行一次。
 
-当前 `entrypoint.sh` 的做法：启动时把持久副本铺成**真实文件**到工作位置，后台守护每 3 秒比对并把变化同步回 `/data/bridge-config.json`；并会接管旧部署下 `/opt` 里较新的残留内容。
+DSH 使用具体容器网卡监听；桥接通过稳定地址 `http://fish-bot:3080` 连接，DSH 原生 `--trusted-host fish-bot:3080` 接受该服务名。OneBot 使用 `snowluma:3000/3001`，分别发现 HTTP 和 WS 令牌；HTTP 候选必须通过当前账号连通验证。宿主全部管理端口仍仅绑定 `127.0.0.1`。
 
-同类问题也存在于 `roles/`：必须整目录指向 `/data/roles`，不能逐个文件软链。
+`runtime.mjs` 监督 DSH、桥接和控制台代理：任一关键进程退出即停止其它进程，由 Docker 的 `unless-stopped` 恢复整套服务；收到正常停止信号时转发到进程组并等待退出。两个容器的停止宽限为 35 秒。
+
+健康检查分层：SnowLuma 检查管理服务；fish-bot 检查桥接鉴权、DSH RPC 和事件流连接。QQ 登录/OneBot 异常由面板单独显示，不通过反复重启 QQ 处理。空闲流没有业务帧也可正常在线。
+
+## 构建与回归
+
+Node 基础镜像固定 digest，DSH、qq-bridge、记忆与心情插件固定已用版本或提交。`fish-bot/qq-bridge.package-lock.json` 是本部署审计后的桥接锁文件，通过 `npm ci` 构建；运行配置、登录态和面板 runtime 不进入构建上下文。
+
+```powershell
+node --test tests/runtime.test.mjs
+docker compose config --quiet
+docker compose build fish-bot
+```
+
+`tests/integration_runtime.py --live-restarts` 会真实启停容器，仅在用户授权的维护窗口执行。`tests/owner_e2e.mjs --send-owner-test` 只能在容器内显式执行，会向配置里的主人私聊发送模型测试消息；不用于日常健康检查。
+
+备份必须停下全部卷写入者后执行 `scripts/backup.ps1`；归档以只读挂载生成、逐一校验并记录 SHA256。任何备份失败都中止升级。版本记录与回滚步骤见 `docs/OPERATIONS-2026-10-27.md`。
 
 ## 首次部署
 

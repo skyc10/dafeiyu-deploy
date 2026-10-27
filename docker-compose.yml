@@ -16,6 +16,13 @@ services:
     image: motricseven7/snowluma:v2.2.0    # 固定 tag，不用浮动 latest
     container_name: snowluma
     restart: unless-stopped
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5099/', {signal: AbortSignal.timeout(3000)}).then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     shm_size: 1g
     ulimits:
       nofile:
@@ -71,8 +78,16 @@ services:
     image: dafeiyu/fish-bot:local
     container_name: fish-bot
     restart: unless-stopped
+    stop_grace_period: 35s
     depends_on:
-      - snowluma
+      snowluma:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "/opt/healthcheck.mjs"]
+      interval: 15s
+      timeout: 6s
+      start_period: 100s
+      retries: 3
     environment:
       TZ: Asia/Shanghai
       # 专用数据根，严禁指向宿主 ~/.dsh、~/.agents
@@ -100,14 +115,9 @@ services:
       # 专用 DSH 管理页，仅本机可达。
       # 用途：在浏览器里配置模型凭据（key 由 DSH 自己写入 .credentials.yaml，
       # 不经过任何中间环节，也不进聊天记录/日志）。
-      # 容器内 DSH 绑 127.0.0.1:3080，故宿主侧只能经 compose 代理访问。
+      # DSH 绑定容器具体网卡，内部使用 fish-bot 服务名。
       - "127.0.0.1:18080:3080"
-      # qq-bridge 内置控制台（白名单、模式、用量、表情库）。
-      # 容器内真实控制台绑 127.0.0.1:3100；console-proxy.mjs 转发到 13100 供映射。
-      # 宿主端口必须与容器内**控制台**端口一致（都用 3100）：
-      # 桥接的 Host 校验只接受 `127.0.0.1:<boundPort>`（bridge.js:3257），
-      # 宿主端口不同会拼出 127.0.0.1:13100 而被 403 拒绝。
-      # 3100 不在动态端口区间（1024-15000）——已验证空闲。
+      # 控制台代理按请求转换本机 Host/Origin，保留上游鉴权。
       - "127.0.0.1:13100:13100"
     networks:
       - dafeiyu-net

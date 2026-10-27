@@ -15,9 +15,21 @@ function Step($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "  !!  $m" -ForegroundColor Yellow }
 
-Step '升级前备份'
+Step '停止写入并进行一致性备份'
+$migrationConfig = Join-Path ([IO.Path]::GetTempPath()) ('dafeiyu-live-' + [guid]::NewGuid().ToString('N') + '.json')
+& $Docker stop --timeout 35 fish-bot snowluma
+if ($LASTEXITCODE -ne 0) { throw '停止容器失败，升级中止' }
+try {
+    & $Docker cp -L 'fish-bot:/opt/qq-bridge/config.json' $migrationConfig
+    if ($LASTEXITCODE -ne 0) { throw '备份运行配置失败' }
+    & $Docker cp $migrationConfig 'fish-bot:/data/bridge-config.pre-upgrade-live.json'
+    if ($LASTEXITCODE -ne 0) { throw '准备配置迁移失败' }
+} finally {
+    if (Test-Path -LiteralPath $migrationConfig) { Remove-Item -LiteralPath $migrationConfig }
+}
+if ($LASTEXITCODE -ne 0) { throw '停止容器失败，升级中止' }
 & (Join-Path $PSScriptRoot 'backup.ps1')
-if ($LASTEXITCODE -ne 0) { Warn '备份失败，继续但请自行确认' }
+if ($LASTEXITCODE -ne 0) { throw '备份失败，升级中止' }
 
 # ── 1. SnowLuma 升级 ──────────────────────────────────────────────────────
 if ($SnowLumaTag) {

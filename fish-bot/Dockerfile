@@ -6,8 +6,7 @@
 # 说明：本镜像只装 DSH 与桥接，不含 SnowLuma 的任何专有组件（遵守其 EULA §5.4）。
 #       qq-bridge 要求 node >= 22.13.0；DSH 0.2.1-rc.2 在 node 24 上验证通过。
 
-ARG NODE_VERSION=24
-FROM node:${NODE_VERSION}-bookworm-slim
+FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 
 ARG DSH_VERSION=0.2.1-rc.2
 
@@ -35,8 +34,9 @@ ARG QQ_BRIDGE_REPO=https://github.com/Derpyu520/qq-bridge
 ARG QQ_BRIDGE_REF=a49877f4e58d04e47532d44b803360d0f001160d
 RUN git clone ${QQ_BRIDGE_REPO} /opt/qq-bridge \
     && cd /opt/qq-bridge \
-    && git checkout ${QQ_BRIDGE_REF} \
-    && npm install --omit=dev
+    && git checkout ${QQ_BRIDGE_REF}
+COPY fish-bot/qq-bridge.package-lock.json /opt/qq-bridge/package-lock.json
+RUN cd /opt/qq-bridge && npm ci --omit=dev
 
 # 本部署的本地改动（remember 工具加入 QQ 白名单，已获用户授权 2026-10-25）
 # 用 Node 脚本而非 sed：源文件是 CRLF，sed 锚点会静默失败。
@@ -53,8 +53,12 @@ RUN cp /opt/qq-bridge/plugins/qq-agent-presets/qq-tool-restrict.mjs \
 # 记忆与心情插件（DSH Cordis bundle 形态，装进专用 profile）
 ARG FISH_MEMORY_REPO=https://github.com/Yuuyuko-uu/dsh-fish-memory
 ARG FEIYU_MOOD_REPO=https://github.com/Yuuyuko-uu/dsh-feiyu-mood
-RUN git clone --depth 1 ${FISH_MEMORY_REPO} /opt/plugins/dsh-fish-memory \
-    && git clone --depth 1 ${FEIYU_MOOD_REPO} /opt/plugins/dsh-feiyu-mood
+ARG FISH_MEMORY_REF=eb766be1542ff928a731636dba7e1e79a27f8339
+ARG FEIYU_MOOD_REF=7eb89c1bf971bd2255a9e79972328dee59d51f5c
+RUN git clone ${FISH_MEMORY_REPO} /opt/plugins/dsh-fish-memory \
+    && git -C /opt/plugins/dsh-fish-memory checkout ${FISH_MEMORY_REF} \
+    && git clone ${FEIYU_MOOD_REPO} /opt/plugins/dsh-feiyu-mood \
+    && git -C /opt/plugins/dsh-feiyu-mood checkout ${FEIYU_MOOD_REF}
 
 # 专用数据根：绝不指向宿主的 ~/.dsh 或 ~/.agents
 # 运行期由 compose 用命名卷挂到 /data，并设 DSH_HOME=/data/dsh-home
@@ -77,6 +81,14 @@ COPY fish-bot/migrate-memory.mjs /opt/migrate-memory.mjs
 
 # 控制台端口转发：桥接控制台只绑回环，靠这个从宿主访问
 COPY fish-bot/console-proxy.mjs /opt/console-proxy.mjs
+
+COPY fish-bot/apply-runtime-patches.mjs /opt/apply-runtime-patches.mjs
+RUN node /opt/apply-runtime-patches.mjs \
+    && node --check /opt/qq-bridge/src/bridge.js \
+    && node --check /opt/qq-bridge/src/mcp-host-server.js \
+    && node --check /opt/qq-bridge/src/mcp-snowluma-safe.js
+COPY fish-bot/runtime.mjs fish-bot/healthcheck.mjs /opt/
+ENV QQ_BRIDGE_CONFIG_FILE=/data/bridge-config.json
 
 COPY fish-bot/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

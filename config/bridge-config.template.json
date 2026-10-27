@@ -3,7 +3,7 @@
   "_placeholder_note": "ownerQQ 与 allow 里的号码是占位值（1000000001/1000000002），首次部署后需在桥接控制台或运行期 config.json 里改成真实 QQ 号；模板本身不保存真实账号。",
 
   "dsh": {
-    "baseUrl": "http://127.0.0.1:3080",
+    "baseUrl": "http://fish-bot:3080",
     "provider": "hqoc",
     "model": "deepseek-v4.1-flash",
     "reasoningEffort": "low",

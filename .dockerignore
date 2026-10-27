@@ -1,0 +1,17 @@
+.git
+management-panel
+**/node_modules
+**/__pycache__
+**/*.log
+**/*.bak*
+.env*
+backup
+volumes
+state
+tests
+docs
+.test-fixtures
+**/config.json
+**/*credentials*
+**/*.token
+**/*.key
