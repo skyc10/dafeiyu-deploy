@@ -88,11 +88,40 @@ if [ $i -ge 90 ]; then
   die "DSH 就绪超时（90 秒）"
 fi
 
-# 打印带 token 的访问地址，方便排查
-grep -o 'http://[^ ]*token=[^ ]*' /data/dsh.log 2>/dev/null | head -1 > /data/dsh-url.txt || true
-if [ -s /data/dsh-url.txt ]; then
-  log "DSH 访问地址已写入 /data/dsh-url.txt"
+# 提取带 token 的访问地址，供管理面板跳转使用。
+#
+# 【2026-10-27 修复】原实现只 grep 一次：
+#     grep -o 'http://[^ ]*token=[^ ]*' /data/dsh.log | head -1 > /data/dsh-url.txt || true
+# 这是**时序竞争**：DSH 的「端口已监听」早于它打印访问地址，上面的就绪循环一探测到
+# 端口就退出了，此时日志里还没有 token 行。实测时间差：
+#     dsh-url.txt 写入 10:13:27.478（空文件）
+#     dsh.log 写完整    10:13:27.530（晚 52ms）
+# 结果面板拿到 0 字节文件，DSH 入口永远报「未启动完成」。
+#
+# 修法：带重试地等 token 行出现；取到后再补一次端口可达性校验。
+# 若最终仍取不到，写入明确的说明而不是留空文件，让面板能给出准确原因。
+DSH_URL_FILE=/data/dsh-url.txt
+: > "$DSH_URL_FILE"
+n=0
+while [ $n -lt 60 ]; do
+  DSH_URL_LINE="$(grep -o 'http://[^ ]*token=[^ ]*' /data/dsh.log 2>/dev/null | tail -1)"
+  if [ -n "${DSH_URL_LINE:-}" ]; then
+    printf '%s\n' "$DSH_URL_LINE" > "$DSH_URL_FILE"
+    break
+  fi
+  n=$((n + 1))
+  sleep 1
+done
+
+if [ -s "$DSH_URL_FILE" ]; then
+  log "DSH 访问地址已写入 $DSH_URL_FILE（等待 ${n} 秒）"
+else
+  # 不写空文件：留空会被面板误判为「还没启动完成」，与实际不符
+  log "⚠️ 60 秒内未从 dsh.log 取到带 token 的地址；DSH 入口可能不可用"
+  log "   日志尾部："
+  tail -n 20 /data/dsh.log || true
 fi
+
 
 # ── 2. 确保 bridge config 存在（每次启动都检查，不依赖首次标记）──────────
 # 注意：/opt/qq-bridge 在镜像层，容器重建即重置。真正的持久化副本放在 /data。
