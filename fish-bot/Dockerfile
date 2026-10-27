@@ -78,6 +78,8 @@ COPY config/role-大肥鱼.md /opt/roles-seed/大肥鱼.md
 
 # profile 引导：装 bundle、建链接、写 cordis.patch.yml
 COPY fish-bot/bootstrap-profile.mjs /opt/bootstrap-profile.mjs
+COPY fish-bot/vendor/dsh-session-header /opt/plugins/dsh-session-header
+COPY fish-bot/install-session-header.mjs /opt/install-session-header.mjs
 
 # 记忆迁移：DSH 重启后桥接会新建会话，把历史记忆继承给新会话
 COPY fish-bot/migrate-memory.mjs /opt/migration-source/migrate-memory.mjs

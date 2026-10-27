@@ -1,0 +1,8 @@
+# Keep the repository byte-stable on every platform: the compiler emits LF, and
+# a Windows clone with core.autocrlf=true would otherwise report a clean build
+# as a modification to lib/.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.zstd binary

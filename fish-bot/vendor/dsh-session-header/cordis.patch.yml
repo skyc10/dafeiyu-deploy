@@ -1,0 +1,10 @@
+# Composition layer contributed by the dsh-session-header bundle.
+
+# One host-plane fiber that stamps every model request with the session header.
+- insert:
+    - id: llm-session-header
+      name: dsh-session-header
+      config:
+        # 想改名/关掉，就在 profile 的 cordis.patch.yml 里按 id 覆盖这一段。
+        enabled: true
+        headerName: x-session-id

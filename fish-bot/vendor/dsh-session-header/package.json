@@ -1,0 +1,48 @@
+{
+  "name": "dsh-session-header",
+  "version": "0.1.0",
+  "description": "Stamp every DeepSeek Harness model request with a stable per-session HTTP header, so a self-hosted gateway can forward a real conversation id upstream",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/inject.js",
+    "lib/types/index.d.ts",
+    "lib/types/inject.d.ts",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "node node_modules/typescript/bin/tsc -p tsconfig.json && node --test tests/*.test.mjs",
+    "link-dsh": "node scripts/link-checkout.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuanhuZeYu/dsh-session-header.git"
+  },
+  "homepage": "https://github.com/QuanhuZeYu/dsh-session-header#readme",
+  "bugs": { "url": "https://github.com/QuanhuZeYu/dsh-session-header/issues" },
+  "author": "QuanhuZeYu",
+  "keywords": ["dsh", "dsh-plugin", "llm", "session", "header", "cordis", "cordis-plugin", "new-api", "session-affinity"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": { "node": ">=20" }
+}

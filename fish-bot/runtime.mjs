@@ -127,6 +127,10 @@ export async function main() {
         child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error('Profile bootstrap failed')));
       });
     }
+    await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['/opt/install-session-header.mjs'], { stdio: 'inherit' });
+      child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error('Session header installation failed')));
+    });
     const bind = process.env.DSH_BIND_IP || concreteIPv4();
     const port = process.env.DSH_PORT || '3080';
     const base = `http://fish-bot:${port}`;

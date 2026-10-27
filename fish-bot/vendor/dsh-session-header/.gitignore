@@ -1,0 +1,6 @@
+node_modules/
+*.tgz
+package-lock.json
+
+# lib/ is committed on purpose: the recommended install is a hot mount by
+# absolute file:/// specifier, so a clone must be usable without a build step.
